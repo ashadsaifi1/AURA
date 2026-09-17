@@ -6,6 +6,7 @@ import faiss
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
@@ -32,14 +33,14 @@ def create_vector_store():
     )
 
     chunks = splitter.split_documents(documents)
-
     texts = [chunk.page_content for chunk in chunks]
 
     print(f"Total chunks: {len(texts)}")
 
     vectorizer = TfidfVectorizer(
-        max_features=20000,
-        stop_words="english"
+        max_features=5000,
+        stop_words="english",
+        dtype=np.float32
     )
 
     vectors = vectorizer.fit_transform(texts)
@@ -64,15 +65,13 @@ def create_vector_store():
         )
 
     print("FAISS vector store created successfully.")
-
     return len(texts)
 
 
 def search_documents(query: str, k: int = 3):
+
     if not INDEX_FILE.exists() or not DATA_FILE.exists():
-        raise FileNotFoundError(
-            "RAG vector store not found."
-        )
+        raise FileNotFoundError("RAG vector store not found.")
 
     index = faiss.read_index(str(INDEX_FILE))
 
@@ -93,6 +92,8 @@ def search_documents(query: str, k: int = 3):
 
     for idx in indices[0]:
         if idx != -1:
-            results.append(texts[idx])
+            results.append(
+                Document(page_content=texts[idx])
+            )
 
     return results
