@@ -1,28 +1,24 @@
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+load_dotenv()
+
+DOCUMENTS_DIR = Path(__file__).parent / "Documents"
+VECTOR_STORE_DIR = Path(__file__).parent / "Vector_store"
 
 
-DOCUMENTS_DIR = Path(__file__).parent / "documents"
-VECTOR_STORE_DIR = Path(__file__).parent / "vector_store"
-
-def search_documents(query: str):
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
+def get_embeddings():
+    return GoogleGenerativeAIEmbeddings(
+        model="models/gemini-embedding-001",
+        google_api_key=os.getenv("GEMINI_API_KEY")
     )
 
-    vector_store = FAISS.load_local(
-        str(VECTOR_STORE_DIR),
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
-
-    results = vector_store.similarity_search(query, k=3)
-
-    return results
 
 def create_vector_store():
     documents = []
@@ -32,7 +28,7 @@ def create_vector_store():
         documents.extend(loader.load())
 
     if not documents:
-        raise ValueError("No PDF found in documents folder.")
+        raise ValueError("No PDF found in Documents folder.")
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
@@ -41,9 +37,7 @@ def create_vector_store():
 
     chunks = splitter.split_documents(documents)
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+    embeddings = get_embeddings()
 
     vector_store = FAISS.from_documents(
         chunks,
@@ -53,3 +47,18 @@ def create_vector_store():
     vector_store.save_local(str(VECTOR_STORE_DIR))
 
     return len(chunks)
+
+
+def search_documents(query: str):
+    embeddings = get_embeddings()
+
+    vector_store = FAISS.load_local(
+        str(VECTOR_STORE_DIR),
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
+
+    return vector_store.similarity_search(
+        query,
+        k=3
+    )
