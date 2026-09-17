@@ -9,3 +9,4 @@ langchain-text-splitters
 langgraph
 faiss-cpu
 pypdf
+scikit-learn

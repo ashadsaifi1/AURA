@@ -1,21 +1,19 @@
 from pathlib import Path
+import pickle
+
+import numpy as np
+import faiss
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 DOCUMENTS_DIR = Path(__file__).parent / "Documents"
 VECTOR_STORE_DIR = Path(__file__).parent / "Vector_store"
 
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-
-def get_embeddings():
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL
-    )
+INDEX_FILE = VECTOR_STORE_DIR / "index.faiss"
+DATA_FILE = VECTOR_STORE_DIR / "rag_data.pkl"
 
 
 def create_vector_store():
@@ -35,31 +33,66 @@ def create_vector_store():
 
     chunks = splitter.split_documents(documents)
 
-    print(f"Total chunks: {len(chunks)}")
+    texts = [chunk.page_content for chunk in chunks]
 
-    embeddings = get_embeddings()
+    print(f"Total chunks: {len(texts)}")
 
-    vector_store = FAISS.from_documents(
-        chunks,
-        embeddings
+    vectorizer = TfidfVectorizer(
+        max_features=20000,
+        stop_words="english"
     )
+
+    vectors = vectorizer.fit_transform(texts)
+    vectors = vectors.toarray().astype("float32")
+
+    faiss.normalize_L2(vectors)
+
+    index = faiss.IndexFlatIP(vectors.shape[1])
+    index.add(vectors)
 
     VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
 
-    vector_store.save_local(str(VECTOR_STORE_DIR))
+    faiss.write_index(index, str(INDEX_FILE))
+
+    with open(DATA_FILE, "wb") as file:
+        pickle.dump(
+            {
+                "texts": texts,
+                "vectorizer": vectorizer
+            },
+            file
+        )
 
     print("FAISS vector store created successfully.")
 
-    return len(chunks)
+    return len(texts)
 
 
-def search_documents(query: str):
-    embeddings = get_embeddings()
+def search_documents(query: str, k: int = 3):
+    if not INDEX_FILE.exists() or not DATA_FILE.exists():
+        raise FileNotFoundError(
+            "RAG vector store not found."
+        )
 
-    vector_store = FAISS.load_local(
-        str(VECTOR_STORE_DIR),
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    index = faiss.read_index(str(INDEX_FILE))
 
-    return vector_store.similarity_search(query, k=3)
+    with open(DATA_FILE, "rb") as file:
+        data = pickle.load(file)
+
+    vectorizer = data["vectorizer"]
+    texts = data["texts"]
+
+    query_vector = vectorizer.transform([query])
+    query_vector = query_vector.toarray().astype("float32")
+
+    faiss.normalize_L2(query_vector)
+
+    scores, indices = index.search(query_vector, k)
+
+    results = []
+
+    for idx in indices[0]:
+        if idx != -1:
+            results.append(texts[idx])
+
+    return results
