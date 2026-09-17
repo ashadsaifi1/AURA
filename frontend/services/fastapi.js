@@ -1,5 +1,5 @@
 async function checkFastAPI() {
-    const response = await fetch("http://127.0.0.1:8000/");
+    const response = await fetch("https://aura-ycsn.onrender.com/");
 
     if (!response.ok) {
         throw new Error(`FastAPI error: ${response.status}`);
@@ -10,7 +10,7 @@ async function checkFastAPI() {
 
 
 async function sendMessage(message) {
-    const response = await fetch("http://127.0.0.1:8000/chat", {
+    const response = await fetch("https://aura-ycsn.onrender.com/chat", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
